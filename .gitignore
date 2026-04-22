@@ -1,0 +1,19 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Storage outputs (kept locally, not versioned)
+storage/temp/*
+storage/output/*
+storage/models/*
+storage/input/scans/*
+
+# Keep the directory structure
+!storage/temp/.gitkeep
+!storage/output/.gitkeep
+!storage/models/.gitkeep
+!storage/input/scans/.gitkeep

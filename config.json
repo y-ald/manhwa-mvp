@@ -1,0 +1,37 @@
+{
+  "title": "Solo Leveling",
+  "language": "fr",
+  "paths": {
+    "scans_input": "storage/input/scans",
+    "temp": "storage/temp",
+    "output": "storage/output",
+    "piper_model": "storage/models/fr_FR-siwis-medium.onnx"
+  },
+  "ocr": {
+    "lang": "en",
+    "supported_langs_comment": "Valid PaddleOCR langs for this MVP: 'en', 'french', 'korean'"
+  },
+  "reddit": {
+    "subreddits": ["manhwa", "manga", "Sololeveling"],
+    "max_posts_per_sub": 8,
+    "max_comments_per_post": 5
+  },
+  "gemini": {
+    "narrative_model": "gemini-2.5-pro",
+    "qa_model": "gemini-2.5-flash",
+    "use_llm_qa": false
+  },
+  "video": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "segment_duration": 3
+  },
+  "limits": {
+    "max_wiki_paragraphs": 10,
+    "max_wiki_bullets": 20,
+    "max_community_snippets": 10,
+    "max_ocr_lines": 100,
+    "max_emotional_cues": 50
+  }
+}

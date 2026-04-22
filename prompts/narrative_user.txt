@@ -1,0 +1,20 @@
+À partir du contexte JSON fourni ci-dessous, écris une narration YouTube en français.
+
+Structure attendue :
+- Hook (accroche immédiate, 2-3 phrases percutantes)
+- Mise en contexte (univers, ton, atmosphère)
+- Montée dramatique (tension, enjeux)
+- Point de bascule (le moment qui change tout)
+- Fin ouverte (cliffhanger ou question ouverte)
+
+Contraintes :
+- 600 à 900 mots.
+- Style immersif, ton de récit oral.
+- Pas de dialogues originaux ni reformulés.
+- Pas de résumé scolaire ni de structure académique.
+- Pas de listes, pas de titres, pas de markdown.
+- Texte directement exploitable pour voix off (phrases lisibles, rythme respiré).
+- Ne mentionne ni chapitre, ni page, ni épisode.
+
+Contexte JSON :
+{context_json}

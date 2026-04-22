@@ -1,0 +1,20 @@
+# Core HTTP / parsing
+requests>=2.32.0
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+
+# OCR (PaddleOCR + its runtime)
+paddleocr>=2.7.0
+paddlepaddle>=2.6.0
+
+# Reddit (community sources)
+praw>=7.7.0
+
+# Gemini (official new SDK, replaces deprecated google-generativeai)
+google-genai>=0.3.0
+
+# .env loading
+python-dotenv>=1.0.0
+
+# Tests
+pytest>=8.0.0

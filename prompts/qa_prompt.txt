@@ -1,0 +1,23 @@
+Analyse le script de narration suivant et détecte :
+- risque de reproduction trop fidèle d'un dialogue ou d'un texte source
+- formulations trop proches de dialogues exacts
+- structure trop descriptive (résumé scolaire au lieu de récit immersif)
+- manque d'immersion ou ton trop neutre
+- répétitions ou tics de langage
+
+Retourne un JSON STRICT (et rien d'autre, pas de markdown) avec ce schéma :
+{
+  "risk_score": <int entre 0 et 100>,
+  "warnings": ["…", "…"],
+  "recommendations": ["…", "…"]
+}
+
+Script à analyser :
+---
+{script}
+---
+
+OCR de référence (dialogues à NE PAS recopier) :
+---
+{ocr_sample}
+---
