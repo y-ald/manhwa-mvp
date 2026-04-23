@@ -1,0 +1,37 @@
+À partir du contexte JSON ci-dessous, écris une narration YouTube en français
+DÉCOUPÉE EN SCÈNES NUMÉROTÉES.
+
+Cible globale : entre {min_scenes} et {max_scenes} scènes, total ~600 à 900 mots
+de narration parlée (somme des `text` des scènes).
+
+Structure narrative attendue (dans cet ordre) :
+- 1 scène `hook` (accroche immédiate)
+- 1-2 scènes `context` (univers, personnage, ambiance)
+- 1-2 scènes `rising` (montée de la tension)
+- 1 scène `twist` (point de bascule)
+- 0-1 scène `climax` (apogée)
+- 1 scène `ending` (fin ouverte / cliffhanger)
+
+Schéma JSON STRICT à retourner (et rien d'autre) :
+{
+  "title": "<titre du manhwa>",
+  "language": "fr",
+  "scenes": [
+    {
+      "id": 1,
+      "type": "hook|context|rising|twist|climax|ending",
+      "text": "<texte parlé en français pour cette scène, prose continue>",
+      "tone": "mystérieux|sombre|action|émotion|neutre",
+      "image_keywords": ["mot1", "mot2", "mot3"],
+      "duration_hint_sec": <int 3..30>
+    }
+  ]
+}
+
+Contraintes par scène :
+- `text` : 50 à 200 mots, phrases lisibles à voix haute, ponctuation expressive (… ! ?).
+- `image_keywords` : 2 à 5 mots-clés simples (français OU anglais) qui pourraient apparaître à l'écran.
+- `duration_hint_sec` : estime grossièrement la durée parlée (~2.5 mots par seconde en français).
+
+Contexte JSON :
+{context_json}

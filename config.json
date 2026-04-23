@@ -3,6 +3,7 @@
   "language": "fr",
   "paths": {
     "scans_input": "storage/input/scans",
+    "scans_prepared": "storage/temp/scans_prepared",
     "temp": "storage/temp",
     "output": "storage/output",
     "piper_model": "storage/models/fr_FR-siwis-medium.onnx"
@@ -16,16 +17,34 @@
     "max_posts_per_sub": 8,
     "max_comments_per_post": 5
   },
+  "pdf": {
+    "extraction_dpi": 150,
+    "target_width": 1280,
+    "slice_height": 720,
+    "use_raw_extraction_when_possible": true,
+    "max_merged_height": 50000,
+    "max_pages_per_pdf": 200
+  },
   "gemini": {
     "narrative_model": "gemini-2.5-pro",
     "qa_model": "gemini-2.5-flash",
     "use_llm_qa": false
   },
+  "scenes": {
+    "min_scenes": 5,
+    "max_scenes": 10,
+    "default_duration_hint_sec": 8,
+    "max_duration_hint_sec": 30
+  },
+  "tts": {
+    "silence_between_scenes_sec": 0.6
+  },
   "video": {
     "width": 1280,
     "height": 720,
     "fps": 30,
-    "segment_duration": 3
+    "min_slice_duration_sec": 1.0,
+    "max_slice_duration_sec": 8.0
   },
   "limits": {
     "max_wiki_paragraphs": 10,

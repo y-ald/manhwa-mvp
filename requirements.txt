@@ -7,6 +7,11 @@ lxml>=5.2.0
 paddleocr>=2.7.0
 paddlepaddle>=2.6.0
 
+# PDF + image manipulation (v0.2)
+pymupdf>=1.24.0
+Pillow>=10.0.0
+natsort>=8.4.0
+
 # Reddit (community sources)
 praw>=7.7.0
 

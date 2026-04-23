@@ -26,9 +26,7 @@ query ($search: String) {
     status
     startDate { year }
     averageScore
-    tags(sort: RANK) { name rank }
-    staff(perPage: 5) { nodes { name { full } } }
-    studios { nodes { name } }
+    tags { name rank }
   }
 }
 """
@@ -45,26 +43,57 @@ def fetch_anilist(title: str, timeout: int = 20) -> dict[str, Any]:
         timeout=timeout,
         headers={"Accept": "application/json", "Content-Type": "application/json"},
     )
-    response.raise_for_status()
+    if not response.ok:
+        # AniList sends a JSON body with the actual error reason on 4xx.
+        body_excerpt = response.text[:500] if response.text else "<empty>"
+        raise RuntimeError(
+            f"AniList HTTP {response.status_code}: {body_excerpt}"
+        )
     payload = response.json()
     if "errors" in payload:
         raise RuntimeError(f"AniList returned errors: {payload['errors']}")
     return payload
 
 
+def _empty_payload(reason: str) -> dict[str, Any]:
+    """Placeholder payload written when AniList is unavailable or has no match.
+
+    `build_context` already tolerates `Media: null`, so downstream steps can
+    proceed using only wiki + community + OCR signals.
+    """
+    return {"data": {"Media": None}, "_error": reason}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Scrape AniList for a manhwa entry.")
     parser.add_argument("--title", required=True, help="Manhwa title to search.")
     parser.add_argument("--output", required=True, type=Path, help="Path to write the JSON.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero on AniList failure instead of writing an empty placeholder.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s %(message)s")
 
     try:
         data = fetch_anilist(args.title)
+        if not (data.get("data") or {}).get("Media"):
+            logger.warning(
+                "AniList: no entry for title=%r (will use wiki + community only).",
+                args.title,
+            )
+            data = _empty_payload(f"no AniList match for {args.title!r}")
     except Exception as exc:  # noqa: BLE001 - top-level CLI handler
-        logger.error("AniList fetch failed: %s", exc)
-        return 1
+        if args.strict:
+            logger.error("AniList fetch failed (strict mode): %s", exc)
+            return 1
+        logger.warning(
+            "AniList unavailable (%s); writing empty placeholder, pipeline will "
+            "continue with wiki + community only.", exc,
+        )
+        data = _empty_payload(str(exc))
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

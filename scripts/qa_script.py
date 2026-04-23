@@ -1,21 +1,21 @@
-"""Minimal QA over the generated script.
+"""QA over the structured scenes.json (v0.2).
 
-Two modes:
-- Local heuristics (default): cheap checks (OCR overlap, very-short-line ratio,
-  obvious dialogue markers).
-- LLM second pass (opt-in via --use-llm + GEMINI_API_KEY): defers to Gemini
-  using prompts/qa_prompt.txt.
+Modes:
+- Local heuristics (default): flat-text checks (OCR overlap, dialogue markers,
+  scene length, total word count).
+- LLM second pass (--use-llm): defers to Gemini for a richer review.
 
 Output (qa.json):
     {
       "risk_score": int,
       "warnings": [str, ...],
       "recommendations": [str, ...],
-      "mode": "local" | "llm"
+      "mode": "local" | "llm",
+      "stats": { "n_scenes": int, "n_words": int, "n_chars": int }
     }
 
 Usage:
-    python -m scripts.qa_script --script storage/temp/script.txt \
+    python -m scripts.qa_script --scenes storage/temp/scenes.json \
         --ocr storage/temp/ocr.json --output storage/temp/qa.json
 """
 from __future__ import annotations
@@ -34,7 +34,6 @@ logger = logging.getLogger("qa")
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
-# Patterns that hint at quoted dialogue.
 DIALOGUE_RE = re.compile(r'(["«»“”])([^"«»“”]{5,})\1|^[\-—]\s+\w', re.MULTILINE)
 
 
@@ -42,64 +41,81 @@ def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
-def local_qa(script: str, ocr_lines: list[str]) -> dict[str, object]:
+def flatten_scenes(scenes_payload: dict) -> tuple[str, list[str]]:
+    """Return (full_text, [per-scene texts])."""
+    scenes = scenes_payload.get("scenes") or []
+    parts = [(s.get("text") or "").strip() for s in scenes if (s.get("text") or "").strip()]
+    return "\n\n".join(parts), parts
+
+
+def local_qa(scenes_payload: dict, ocr_lines: list[str]) -> dict:
+    full_text, scene_texts = flatten_scenes(scenes_payload)
     warnings: list[str] = []
     recommendations: list[str] = []
     score = 0
 
-    norm_script = normalize(script)
+    norm_text = normalize(full_text)
 
-    # 1) OCR overlap detection.
+    # 1) OCR overlap
     overlap_hits = 0
     for line in ocr_lines:
         n = normalize(line)
-        if len(n) >= 12 and n in norm_script:
+        if len(n) >= 12 and n in norm_text:
             overlap_hits += 1
-            warnings.append(f"Phrase OCR potentiellement reprise telle quelle: {line!r}")
+            warnings.append(f"OCR phrase potentially copied verbatim: {line!r}")
     if overlap_hits:
         score += min(40, 8 * overlap_hits)
         recommendations.append("Reformuler les passages issus de l'OCR.")
 
-    # 2) Short-line ratio (descriptive bullet-point feel).
-    lines = [ln for ln in script.splitlines() if ln.strip()]
-    if lines:
-        short_ratio = sum(1 for ln in lines if len(ln) < 40) / len(lines)
-        if short_ratio > 0.4:
-            score += 15
-            warnings.append(
-                f"{int(short_ratio * 100)}% des lignes sont très courtes (style descriptif)."
-            )
-            recommendations.append(
-                "Privilégier des paragraphes longs, fluides, type narration orale."
-            )
-
-    # 3) Dialogue markers.
-    dialogue_matches = DIALOGUE_RE.findall(script)
+    # 2) Dialogue markers
+    dialogue_matches = DIALOGUE_RE.findall(full_text)
     if dialogue_matches:
         score += min(25, 5 * len(dialogue_matches))
-        warnings.append(
-            f"{len(dialogue_matches)} marque(s) de dialogue direct détectée(s)."
-        )
+        warnings.append(f"{len(dialogue_matches)} dialogue marker(s) detected.")
         recommendations.append("Remplacer les dialogues par du discours indirect.")
 
-    # 4) Word count guard rails.
-    word_count = len(script.split())
+    # 3) Word count guard rails (target 600-900)
+    word_count = len(full_text.split())
     if word_count < 500:
-        score += 10
-        warnings.append(f"Script trop court ({word_count} mots, cible 600-900).")
+        score += 12
+        warnings.append(f"Script too short ({word_count} words, target 600-900).")
     elif word_count > 1100:
+        score += 6
+        warnings.append(f"Script too long ({word_count} words, target 600-900).")
+
+    # 4) Scene structure sanity
+    n_scenes = len(scene_texts)
+    if n_scenes < 4:
+        score += 10
+        warnings.append(f"Only {n_scenes} scene(s); narrative likely flat.")
+    if any(len(t.split()) < 25 for t in scene_texts):
         score += 5
-        warnings.append(f"Script trop long ({word_count} mots, cible 600-900).")
+        recommendations.append("Étoffer les scènes les plus courtes.")
+    if any(len(t.split()) > 250 for t in scene_texts):
+        score += 5
+        recommendations.append("Découper les scènes les plus longues.")
+
+    # 5) Validate that scenes.json declared known tones / types
+    scenes = scenes_payload.get("scenes") or []
+    bad_tones = [s for s in scenes if s.get("tone") == "neutre"]
+    if len(bad_tones) == len(scenes) and scenes:
+        score += 8
+        warnings.append("All scenes are 'neutre' tone; visual variety will be flat.")
 
     return {
         "risk_score": min(score, 100),
         "warnings": warnings,
         "recommendations": recommendations,
         "mode": "local",
+        "stats": {
+            "n_scenes": n_scenes,
+            "n_words": word_count,
+            "n_chars": len(full_text),
+        },
     }
 
 
-def llm_qa(script: str, ocr_lines: list[str], model: str) -> dict[str, object]:
+def llm_qa(scenes_payload: dict, ocr_lines: list[str], model: str) -> dict:
     from google import genai
     from google.genai import types
 
@@ -107,8 +123,9 @@ def llm_qa(script: str, ocr_lines: list[str], model: str) -> dict[str, object]:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set; cannot use --use-llm.")
 
+    full_text, _ = flatten_scenes(scenes_payload)
     prompt_tpl = (PROMPTS_DIR / "qa_prompt.txt").read_text(encoding="utf-8")
-    prompt = prompt_tpl.replace("{script}", script).replace(
+    prompt = prompt_tpl.replace("{script}", full_text).replace(
         "{ocr_sample}", "\n".join(ocr_lines[:30])
     )
 
@@ -116,19 +133,19 @@ def llm_qa(script: str, ocr_lines: list[str], model: str) -> dict[str, object]:
     response = client.models.generate_content(
         model=model,
         contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=1024),
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=1024,
+            response_mime_type="application/json",
+        ),
     )
     raw = (response.text or "").strip()
-
-    # The prompt asks for strict JSON; try to parse, fall back to a wrapped error.
+    cleaned = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
     try:
-        # Strip a possible ```json fence.
-        cleaned = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
         parsed = json.loads(cleaned)
         parsed["mode"] = "llm"
         return parsed
     except json.JSONDecodeError:
-        logger.warning("LLM did not return strict JSON, wrapping raw output.")
         return {
             "risk_score": 50,
             "warnings": ["LLM did not return parseable JSON."],
@@ -138,8 +155,8 @@ def llm_qa(script: str, ocr_lines: list[str], model: str) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run QA on the generated script.")
-    parser.add_argument("--script", required=True, type=Path)
+    parser = argparse.ArgumentParser(description="Run QA on scenes.json.")
+    parser.add_argument("--scenes", required=True, type=Path)
     parser.add_argument("--ocr", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--use-llm", action="store_true")
@@ -149,11 +166,16 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s %(message)s")
     load_dotenv()
 
-    if not args.script.exists():
-        logger.error("Script file %s does not exist.", args.script)
+    if not args.scenes.exists():
+        logger.error("scenes file %s does not exist.", args.scenes)
         return 1
 
-    script = args.script.read_text(encoding="utf-8")
+    try:
+        scenes_payload = json.loads(args.scenes.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        logger.error("scenes.json invalid: %s", exc)
+        return 1
+
     ocr_lines: list[str] = []
     if args.ocr.exists():
         try:
@@ -166,17 +188,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.use_llm:
         try:
-            report = llm_qa(script, ocr_lines, args.llm_model)
+            report = llm_qa(scenes_payload, ocr_lines, args.llm_model)
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM QA failed (%s); falling back to local heuristics.", exc)
-            report = local_qa(script, ocr_lines)
+            report = local_qa(scenes_payload, ocr_lines)
     else:
-        report = local_qa(script, ocr_lines)
+        report = local_qa(scenes_payload, ocr_lines)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    args.output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logger.info(
-        "Wrote %s (risk=%s, warnings=%s, mode=%s)",
+        "Wrote %s (risk=%s, warnings=%d, mode=%s)",
         args.output,
         report.get("risk_score"),
         len(report.get("warnings", [])),

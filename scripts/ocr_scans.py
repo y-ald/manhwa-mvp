@@ -55,7 +55,9 @@ def run_ocr(
     from paddleocr import PaddleOCR
 
     logger.info("Loading PaddleOCR model lang=%s", lang)
-    ocr = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
+    # PaddleOCR v3.x API: `use_angle_cls`/`show_log` removed; orientation flag
+    # renamed to `use_textline_orientation`.
+    ocr = PaddleOCR(use_textline_orientation=True, lang=lang)
 
     sample: list[str] = []
     cues: list[str] = []
@@ -63,19 +65,27 @@ def run_ocr(
     for idx, img_path in enumerate(images, start=1):
         logger.info("OCR %d/%d %s", idx, len(images), img_path.name)
         try:
-            result = ocr.ocr(str(img_path), cls=True)
+            # `predict()` is the v3.x entry point; returns a list of OCRResult
+            # objects (one per input image) exposing dict-like access.
+            results = ocr.predict(str(img_path))
         except Exception as exc:  # noqa: BLE001
             logger.warning("OCR failed for %s: %s", img_path, exc)
             continue
 
-        # PaddleOCR returns: [[ [box, (text, conf)], ... ]]  per image.
-        if not result or not result[0]:
+        if not results:
             continue
-        for entry in result[0]:
+
+        # Flatten texts (and scores, kept here for future thresholding) across
+        # every page result returned by PaddleOCR.
+        texts: list[str] = []
+        for page in results:
             try:
-                text = entry[1][0].strip()
-            except (IndexError, TypeError):
+                texts.extend(page.get("rec_texts") or [])
+            except (AttributeError, TypeError):
                 continue
+
+        for raw in texts:
+            text = (raw or "").strip()
             if not text:
                 continue
             if len(sample) < max_lines:
